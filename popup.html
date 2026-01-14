@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 300px;
+      padding: 10px;
+      font-family: sans-serif;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    #output {
+      border: 1px solid #ccc;
+      padding: 10px;
+      min-height: 100px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .recording {
+      background-color: #dc3545 !important;
+    }
+
+    canvas {
+      width: 100%;
+      height: 50px;
+      background: #f0f0f0;
+      margin-bottom: 10px;
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <button id="captureBtn">Capture</button>
+  <canvas id="visualizer"></canvas>
+  <div id="output"></div>
+  <script src="popup.js"></script>
+</body>
+
+</html>
