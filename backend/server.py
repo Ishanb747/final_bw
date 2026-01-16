@@ -7,6 +7,9 @@ import os
 import tempfile
 import logging
 import json
+import firebase_admin
+from firebase_admin import credentials, firestore
+import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,12 +26,28 @@ logger.info("Initializing Groq client...")
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 logger.info("Groq client initialized!")
 
+# Initialize Firebase Admin
+try:
+    cred_path = os.environ.get("FIREBASE_CREDENTIALS", "serviceAccountKey.json")
+    if os.path.exists(cred_path):
+        cred = credentials.Certificate(cred_path)
+        firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        logger.info("Firebase Admin initialized successfully!")
+    else:
+        logger.warning(f"Firebase credentials not found at {cred_path}. Firestore features will be disabled.")
+        db = None
+except Exception as e:
+    logger.error(f"Failed to initialize Firebase: {e}")
+    db = None
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
     return jsonify({
         "status": "ok",
         "model": "whisper-base",
+        "firebase": "connected" if db else "disconnected",
         "message": "TruthLens service is running"
     })
 
@@ -113,7 +132,7 @@ def factcheck():
     """
     Enhanced fact-check endpoint with article listing and perspectives
     Expects JSON: { "text": "claim to check" }
-    Returns: { "report": "...", "articles": [...], "perspectives": {...} }
+    Returns: { "reportId": "...", "status": "stored" } or full details if db not available
     """
     try:
         data = request.get_json()
@@ -130,26 +149,56 @@ def factcheck():
         if "error" in result and "report" not in result:
             return jsonify({
                 "error": result["error"],
-                "success": False,
-                "articles": result.get("articles", []),
-                "perspectives": result.get("perspectives", {})
+                "success": False
             }), 500
-        
-        return jsonify({
-            "result": result.get("report", ""),
+            
+        # Store in Firestore if available
+        report_data = {
+            "query": text,
+            "report": result.get("report", ""),
             "articles": result.get("articles", []),
             "article_count": result.get("article_count", 0),
             "perspectives": result.get("perspectives", {}),
-            "success": True
-        })
+            "input_bias": result.get("input_bias", ""),
+            "timestamp": firestore.SERVER_TIMESTAMP,
+            "created_at": datetime.datetime.now().isoformat()
+        }
+        
+        if db:
+            try:
+                update_time, doc_ref = db.collection('reports').add(report_data)
+                logger.info(f"Report stored in Firestore with ID: {doc_ref.id}")
+                
+                return jsonify({
+                    "success": True,
+                    "reportId": doc_ref.id,
+                    "message": "Report generated and stored"
+                })
+            except Exception as db_e:
+                logger.error(f"Firestore error: {db_e}")
+                # Fallback to returning full data if DB fails
+                return jsonify({
+                    "success": True,
+                    "result": result.get("report", ""),
+                    "articles": result.get("articles", []),
+                    "perspectives": result.get("perspectives", {}),
+                    "error_db": "Failed to store report"
+                })
+        else:
+            # Fallback if DB not configured
+            return jsonify({
+                "success": True,
+                "result": result.get("report", ""),
+                "articles": result.get("articles", []),
+                "perspectives": result.get("perspectives", {}),
+                "message": "DB not connected, returning raw data"
+            })
         
     except Exception as e:
         logger.error(f"Fact check error: {str(e)}")
         return jsonify({
             "error": str(e),
-            "success": False,
-            "articles": [],
-            "perspectives": {}
+            "success": False
         }), 500
 
 if __name__ == '__main__':
@@ -157,11 +206,10 @@ if __name__ == '__main__':
     print("TruthLens Enhanced Server")
     print("="*60)
     print("Server running on http://localhost:5001")
-    print("Features:")
-    print("  - Audio Transcription (Whisper)")
-    print("  - Multi-Perspective Fact Checking (GDELT)")
-    print("  - Article Source Listing")
-    print("  - Political Bias Analysis")
+    if db:
+        print("  - Firestore: Connected")
+    else:
+        print("  - Firestore: Not Connected (Check serviceAccountKey.json)")
     print("="*60 + "\n")
     
     app.run(host='0.0.0.0', port=5001, debug=True)

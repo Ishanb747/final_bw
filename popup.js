@@ -354,6 +354,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!response.ok) throw new Error('Fact check failed');
                     const data = await response.json();
 
+                    if (data.success && data.reportId) {
+                        const reportUrl = `http://localhost:5173/report/${data.reportId}`;
+                        chrome.tabs.create({ url: reportUrl });
+
+                        outputDiv.innerHTML = `<div style="padding:20px; background:#d4edda; border-left:4px solid #28a745; border-radius:8px;">` +
+                            `<b style="font-size:16px;">✅ Report Generated!</b><br>` +
+                            `<div style="margin-top:10px;">Opening detailed analysis in a new tab...</div>` +
+                            `</div>`;
+                        return;
+                    }
+
                     displayFactCheckResult(data.result, data.articles, data.perspectives, data.article_count);
 
                 } catch (e) {

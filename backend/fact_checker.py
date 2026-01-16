@@ -99,10 +99,10 @@ def gdelt_search(query: str, max_records: int = 20) -> dict:
         if not articles:
             return {"articles": [], "error": f"No articles found"}
         
-        # Format articles with all metadata
+        # Format articles with all metadata including images
         formatted_articles = []
         for art in articles:
-            formatted_articles.append({
+            article_data = {
                 "title": art.get('title', 'No Title'),
                 "url": art.get('url', 'No URL'),
                 "domain": art.get('domain', 'Unknown'),
@@ -110,7 +110,20 @@ def gdelt_search(query: str, max_records: int = 20) -> dict:
                 "seendate": art.get('seendate', 'Unknown'),
                 "tone": art.get('tone', 'N/A'),
                 "language": art.get('language', 'Unknown')
-            })
+            }
+            
+            # Extract image URLs if available
+            social_image = art.get('socialimage', '')
+            image_url = art.get('imageurl', '')
+            
+            if social_image:
+                article_data['image'] = social_image
+            elif image_url:
+                article_data['image'] = image_url
+            else:
+                article_data['image'] = None
+                
+            formatted_articles.append(article_data)
             
         return {"articles": formatted_articles, "count": len(formatted_articles)}
         

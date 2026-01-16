@@ -1,9 +1,10 @@
-flask==3.0.0
-flask-cors==4.0.0
-faster-whisper==1.0.3
-groq>=0.4.2
-pydub==0.25.1
-langchain
+flask
+flask-cors
+python-dotenv
+groq
 langchain-groq
 langchain-community
+beautifulsoup4
+requests
 duckduckgo-search
+firebase-admin
