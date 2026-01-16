@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from faster_whisper import WhisperModel
+from groq import Groq
 from fact_checker import run_fact_check  # Your enhanced fact_checker.py
 from dotenv import load_dotenv
 import os
@@ -18,10 +18,10 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Chrome extension
 
-# Initialize Whisper model
-logger.info("Loading Whisper model...")
-model = WhisperModel("base", device="cpu", compute_type="int8")
-logger.info("Whisper model loaded successfully!")
+# Initialize Groq client
+logger.info("Initializing Groq client...")
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+logger.info("Groq client initialized!")
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -58,17 +58,33 @@ def transcribe():
             temp_path = temp_audio.name
 
         logger.info(f"Processing audio file: {audio_file.filename}")
+        
+        # Call Groq Whisper API (Cloud)
+        with open(temp_path, "rb") as file:
+            transcription = client.audio.transcriptions.create(
+                file=(temp_path, file.read()),
+                model="whisper-large-v3",
+                response_format="verbose_json",
+            )
 
-        # Transcribe using faster-whisper (auto-detect language)
-        segments, info = model.transcribe(
-            temp_path,
-            beam_size=5,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500)
-        )
-
-        # Combine all segments
-        transcript = " ".join([segment.text.strip() for segment in segments])
+        transcript = transcription.text
+        detected_language_code = getattr(transcription, 'language', 'en')
+        
+        # Language mapping for better UI feedback
+        lang_map = {
+            "hi": "Hindi",
+            "mr": "Marathi",
+            "ta": "Tamil",
+            "te": "Telugu",
+            "kn": "Kannada",
+            "gu": "Gujarati",
+            "pa": "Punjabi",
+            "bn": "Bengali",
+            "en": "English",
+            "ur": "Urdu"
+        }
+        
+        lang_name = lang_map.get(detected_language_code, detected_language_code.upper())
 
         # Clean up
         try:
@@ -80,9 +96,7 @@ def transcribe():
 
         return jsonify({
             "transcript": transcript,
-            "language": info.language,
-            "language_probability": float(info.language_probability),
-            "duration": float(info.duration),
+            "language": lang_name,
             "success": True
         })
 
