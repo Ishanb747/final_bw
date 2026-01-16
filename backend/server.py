@@ -1,20 +1,24 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from faster_whisper import WhisperModel
+from fact_checker import run_fact_check  # Your enhanced fact_checker.py
+from dotenv import load_dotenv
 import os
 import tempfile
 import logging
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Load env vars
+load_dotenv()
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Chrome extension
 
-# Initialize Whisper model (base model for good speed/accuracy balance)
-# Models: tiny, base, small, medium, large-v2, large-v3
-# Using base model (~150MB) - good balance of speed and accuracy
+# Initialize Whisper model
 logger.info("Loading Whisper model...")
 model = WhisperModel("base", device="cpu", compute_type="int8")
 logger.info("Whisper model loaded successfully!")
@@ -25,18 +29,15 @@ def health():
     return jsonify({
         "status": "ok",
         "model": "whisper-base",
-        "message": "Transcription service is running"
+        "message": "TruthLens service is running"
     })
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
     """
     Transcribe audio file sent from Chrome extension
-    Expects: audio file in request.files['audio']
-    Returns: JSON with transcript
     """
     try:
-        # Check if audio file is present
         if 'audio' not in request.files:
             return jsonify({
                 "error": "No audio file provided",
@@ -58,26 +59,24 @@ def transcribe():
 
         logger.info(f"Processing audio file: {audio_file.filename}")
 
-        # Transcribe using faster-whisper
+        # Transcribe using faster-whisper (auto-detect language)
         segments, info = model.transcribe(
             temp_path,
             beam_size=5,
-            language="en",  # Can be auto-detected by removing this
-            vad_filter=True,  # Voice Activity Detection to filter silence
+            vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=500)
         )
 
-        # Combine all segments into full transcript
+        # Combine all segments
         transcript = " ".join([segment.text.strip() for segment in segments])
 
-        # Clean up temporary file
+        # Clean up
         try:
             os.unlink(temp_path)
         except:
             pass
 
         logger.info(f"Transcription successful. Length: {len(transcript)} chars")
-        logger.info(f"Detected language: {info.language} (confidence: {info.language_probability:.2f})")
 
         return jsonify({
             "transcript": transcript,
@@ -95,13 +94,60 @@ def transcribe():
             "success": False
         }), 500
 
+@app.route('/factcheck', methods=['POST'])
+def factcheck():
+    """
+    Enhanced fact-check endpoint with article listing and perspectives
+    Expects JSON: { "text": "claim to check" }
+    Returns: { "report": "...", "articles": [...], "perspectives": {...} }
+    """
+    try:
+        data = request.get_json()
+        if not data or 'text' not in data:
+            return jsonify({"error": "No text provided"}), 400
+            
+        text = data['text']
+        logger.info(f"Received fact check request for: {text}")
+        
+        # Run enhanced fact check
+        result_json = run_fact_check(text)
+        result = json.loads(result_json)
+        
+        if "error" in result and "report" not in result:
+            return jsonify({
+                "error": result["error"],
+                "success": False,
+                "articles": result.get("articles", []),
+                "perspectives": result.get("perspectives", {})
+            }), 500
+        
+        return jsonify({
+            "result": result.get("report", ""),
+            "articles": result.get("articles", []),
+            "article_count": result.get("article_count", 0),
+            "perspectives": result.get("perspectives", {}),
+            "success": True
+        })
+        
+    except Exception as e:
+        logger.error(f"Fact check error: {str(e)}")
+        return jsonify({
+            "error": str(e),
+            "success": False,
+            "articles": [],
+            "perspectives": {}
+        }), 500
+
 if __name__ == '__main__':
-    print("\n" + "="*50)
-    print("TruthLens Transcription Server")
-    print("="*50)
+    print("\n" + "="*60)
+    print("TruthLens Enhanced Server")
+    print("="*60)
     print("Server running on http://localhost:5001")
-    print("Whisper model: base")
-    print("Ready to receive audio from extension")
-    print("="*50 + "\n")
+    print("Features:")
+    print("  - Audio Transcription (Whisper)")
+    print("  - Multi-Perspective Fact Checking (GDELT)")
+    print("  - Article Source Listing")
+    print("  - Political Bias Analysis")
+    print("="*60 + "\n")
     
     app.run(host='0.0.0.0', port=5001, debug=True)
