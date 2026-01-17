@@ -10,3 +10,4 @@ duckduckgo-search
 firebase-admin
 gunicorn
 django
+ddgs
